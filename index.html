@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSP V2.5 - Padel Score Sync</title>
+  <!-- PeerJS per Connessione P2P WebRTC Istantanea -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+    body { background-color: #0d1117; color: #f0f6fc; display: flex; flex-direction: column; min-height: 100vh; padding: 10px; justify-content: center; align-items: center; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h1 { text-align: center; color: #58a6ff; font-size: 22px; margin-bottom: 2px; }
+    .subtitle { text-align: center; color: #8b949e; font-size: 12px; margin-bottom: 14px; }
+    .input-group { margin-bottom: 12px; }
+    label { display: block; font-size: 11px; color: #8b949e; margin-bottom: 5px; font-weight: bold; letter-spacing: 0.5px; }
+    input { width: 100%; background: #0d1117; border: 1px solid #30363d; color: #fff; padding: 10px; border-radius: 8px; font-size: 13px; outline: none; text-align: center; font-weight: bold; }
+    input:focus { border-color: #58a6ff; }
+    
+    /* Griglie Pulsanti */
+    .btn-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+    .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+    
+    .opt-btn { padding: 11px 4px; border-radius: 8px; border: 1px solid #30363d; background: #21262d; color: #8b949e; font-weight: bold; cursor: pointer; text-align: center; font-size: 12px; transition: all 0.2s ease; }
+    .opt-btn.active { border-color: #238636; background: #238636; color: #ffffff; box-shadow: 0 0 8px rgba(35, 134, 54, 0.5); }
+
+    .player-btn { padding: 12px 6px; border-radius: 10px; border: 2px solid #30363d; background: #21262d; color: #8b949e; font-weight: bold; cursor: pointer; text-align: center; font-size: 12px; transition: all 0.2s ease; }
+    .player-btn.red-off { border-color: rgba(218, 54, 51, 0.4); background: rgba(218, 54, 51, 0.1); color: #f85149; }
+    .player-btn.blue-off { border-color: rgba(31, 111, 235, 0.4); background: rgba(31, 111, 235, 0.1); color: #58a6ff; }
+    .player-btn.red-on { border-color: #da3633; background: #da3633; color: #ffffff; box-shadow: 0 0 10px rgba(218, 54, 51, 0.5); }
+    .player-btn.blue-on { border-color: #1f6feb; background: #1f6feb; color: #ffffff; box-shadow: 0 0 10px rgba(31, 111, 235, 0.5); }
+    
+    .btn-action { width: 100%; padding: 13px; border: none; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 8px; text-align: center; }
+    .btn-primary-green { background: #238636; color: #fff; } 
+    .btn-primary-green:active { background: #2ea043; }
+    
+    .btn-local-distinct { background: #30363d; border: 1px solid #484f58; color: #c9d1d9; margin-top: 6px; } 
+    .link-create { text-align: right; margin-top: 4px; font-size: 11px; color: #58a6ff; cursor: pointer; text-decoration: underline; }
+
+    /* Notifiche Toast */
+    .toast { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 30px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: none; z-index: 100; text-align: center; max-width: 90%; }
+    .toast-success { background: #238636; color: white; }
+    .toast-info { background: #1f6feb; color: white; }
+    .toast-error { background: #da3633; color: white; }
+
+    /* Schermata Gioco */
+    #game-screen { display: none; }
+    .header-status { display: flex; justify-content: space-between; align-items: center; background: #0d1117; padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; border: 1px solid #30363d; font-size: 11px; color: #8b949e; }
+    .players-count { color: #3fb950; font-weight: bold; }
+    .match-timer { color: #f2994a; font-weight: bold; font-family: monospace; font-size: 13px; }
+    .mode-badge { background: #238636; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px; margin-left: 4px; }
+
+    .score-board { display: flex; justify-content: space-between; background: #0d1117; padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #30363d; }
+    .team-score { text-align: center; flex: 1; }
+    .team-score.red { color: #f85149; }
+    .team-score.blue { color: #58a6ff; }
+    .score-val { font-size: 38px; font-weight: bold; margin: 2px 0; }
+    .games-val { font-size: 12px; color: #8b949e; }
+
+    /* Pulsanti Grandi Dinamici */
+    .btn-point { width: 100%; height: 85px; margin-bottom: 10px; border-radius: 14px; border: none; font-size: 21px; font-weight: bold; color: white; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .btn-point:active { transform: scale(0.98); opacity: 0.9; }
+    .btn-point-sub { font-size: 11px; font-weight: normal; opacity: 0.85; margin-top: 3px; }
+
+    .bg-red { background: #da3633; }
+    .bg-blue { background: #1f6feb; }
+
+    /* Pulsanti di Controllo Hold 3s */
+    .actions-row { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-hold { flex: 1; position: relative; padding: 10px 4px; background: #21262d; border: 1px solid #30363d; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px; text-align: center; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 46px; }
+    
+    .btn-hold-undo { color: #d29922; }
+    .btn-hold-home { color: #58a6ff; }
+    .btn-hold-reset { color: #f85149; }
+
+    .progress-bar { position: absolute; bottom: 0; left: 0; height: 100%; width: 0%; background: rgba(255, 255, 255, 0.2); transition: width 0.1s linear; pointer-events: none; }
+    .sub-hint { font-size: 8px; opacity: 0.6; font-weight: normal; margin-top: 1px; }
+  </style>
+</head>
+<body>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- SCHERMATA CONFIGURAZIONE -->
+  <div id="setup-screen" class="card">
+    <h1>PSP V2.5</h1>
+    <p class="subtitle">Padel Score Sync (P2P WebRTC)</p>
+
+    <div class="input-group">
+      <label>NUMERO PARTITA</label>
+      <input type="number" id="match-code" placeholder="Es. 1024" value="1024">
+      <div class="link-create" onclick="createNewMatchCode()">Genera Codice Casuale</div>
+    </div>
+
+    <!-- SELEZIONE REGOLA VANTAGGI TRAMITE PULSANTI RAPIDI -->
+    <div class="input-group">
+      <label>REGOLA VANTAGGI (40-40)</label>
+      <div class="btn-grid-4">
+        <div id="btn-adv-po" class="opt-btn active" onclick="selectDeuceRule('golden', 0, 'PO', 'btn-adv-po')">PO</div>
+        <div id="btn-adv-v" class="opt-btn" onclick="selectDeuceRule('standard', 0, 'V', 'btn-adv-v')">V</div>
+        <div id="btn-adv-v1" class="opt-btn" onclick="selectDeuceRule('limited', 1, 'V1', 'btn-adv-v1')">V1</div>
+        <div id="btn-adv-v2" class="opt-btn" onclick="selectDeuceRule('limited', 2, 'V2', 'btn-adv-v2')">V2</div>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>SELEZIONA RUOLO E SQUADRA</label>
+      <div class="player-grid">
+        <div id="btn-red-sx" class="player-btn red-on" onclick="selectPlayerRole('red_sx', 'SX ROSSO', 'red')">SX ROSSO</div>
+        <div id="btn-red-dx" class="player-btn red-off" onclick="selectPlayerRole('red_dx', 'DX ROSSO', 'red')">DX ROSSO</div>
+        <div id="btn-blue-sx" class="player-btn blue-off" onclick="selectPlayerRole('blue_sx', 'SX BLU', 'blue')">SX BLU</div>
+        <div id="btn-blue-dx" class="player-btn blue-off" onclick="selectPlayerRole('blue_dx', 'DX BLU', 'blue')">DX BLU</div>
+      </div>
+    </div>
+
+    <button class="btn-action btn-primary-green" onclick="initP2PMatch()">ENTRA IN PARTITA ONLINE</button>
+    <button class="btn-action btn-local-distinct" onclick="startLocalMatch()">GIOCA IN LOCALE (NO SYNC)</button>
+  </div>
+
+  <!-- SCHERMATA DI GIOCO -->
+  <div id="game-screen" class="card">
+    <div class="header-status">
+      <div>PARTITA N. <strong id="display-match" style="color:#fff;"></strong> <span id="display-mode" class="mode-badge">PO</span></div>
+      <div>⏱️ <span id="match-timer" class="match-timer">00:00</span></div>
+      <div>IN CAMPO: <span id="player-count" class="players-count">1</span></div>
+    </div>
+
+    <div class="score-board">
+      <div class="team-score red">
+        <div>SQUADRA ROSSA</div>
+        <div id="red-points" class="score-val">0</div>
+        <div class="games-val">Game: <span id="red-games">0</span></div>
+      </div>
+      <div class="team-score blue">
+        <div>SQUADRA BLU</div>
+        <div id="blue-points" class="score-val">0</div>
+        <div class="games-val">Game: <span id="blue-games">0</span></div>
+      </div>
+    </div>
+
+    <button id="btn-our-point" class="btn-point bg-red" onclick="addPoint('our')">
+      <span>PUNTO NOSTRO</span>
+      <span id="our-team-label" class="btn-point-sub">(Squadra Rossa)</span>
+    </button>
+
+    <button id="btn-their-point" class="btn-point bg-blue" onclick="addPoint('their')">
+      <span>PUNTO LORO</span>
+      <span id="their-team-label" class="btn-point-sub">(Squadra Blu)</span>
+    </button>
+
+    <div class="actions-row">
+      <div id="btn-undo" class="btn-hold btn-hold-undo">
+        <div class="progress-bar" id="prog-undo"></div>
+        <span>↩ ANNULLA</span>
+        <span class="sub-hint">(Tieni 3s)</span>
+      </div>
+
+      <div id="btn-home" class="btn-hold btn-hold-home">
+        <div class="progress-bar" id="prog-home"></div>
+        <span>🏠 HOME</span>
+        <span class="sub-hint">(Tieni 3s)</span>
+      </div>
+
+      <div id="btn-reset" class="btn-hold btn-hold-reset">
+        <div class="progress-bar" id="prog-reset"></div>
+        <span>⚠️ RESET</span>
+        <span class="sub-hint">(Tieni 3s)</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let myRoleKey = "red_sx";
+    let myRoleName = "SX ROSSO";
+    let myTeam = "red";
+    let matchCode = "";
+    let peer = null;
+    let connections = [];
+    let connectedPlayers = {};
+
+    let timerInterval = null;
+    let startTime = null;
+
+    let selectedDeuceMode = "golden";
+    let selectedMaxAdv = 0;
+    let selectedDeuceLabel = "PO";
+
+    let gameState = {
+      redPoints: 0,
+      bluePoints: 0,
+      redGames: 0,
+      blueGames: 0,
+      advantageState: "",
+      advCount: 0,
+      deuceMode: "golden",
+      maxAdv: 0,
+      deuceLabel: "PO",
+      startTime: null
+    };
+
+    let historyStack = [];
+
+    function selectDeuceRule(mode, maxAdvCount, labelText, btnId) {
+      selectedDeuceMode = mode;
+      selectedMaxAdv = maxAdvCount;
+      selectedDeuceLabel = labelText;
+
+      document.querySelectorAll('.opt-btn').forEach(btn => btn.classList.remove('active'));
+      const targetBtn = document.getElementById(btnId);
+      if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    function selectPlayerRole(roleKey, roleName, team) {
+      myRoleKey = roleKey;
+      myRoleName = roleName;
+      myTeam = team;
+
+      const roles = ['red_sx', 'red_dx', 'blue_sx', 'blue_dx'];
+      roles.forEach(r => {
+        const btn = document.getElementById(`btn-${r.replace('_', '-')}`);
+        const isRed = r.startsWith('red');
+        if (r === roleKey) {
+          btn.className = `player-btn ${isRed ? 'red-on' : 'blue-on'}`;
+        } else {
+          btn.className = `player-btn ${isRed ? 'red-off' : 'blue-off'}`;
+        }
+      });
+    }
+
+    function createNewMatchCode() {
+      const randomCode = Math.floor(1000 + Math.random() * 9000);
+      document.getElementById('match-code').value = randomCode;
+      showToast(`Codice Partita: ${randomCode}`, 'info');
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.innerText = message;
+      toast.className = `toast toast-${type}`;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    }
+
+    function setupButtonColors() {
+      const btnOur = document.getElementById('btn-our-point');
+      const btnTheir = document.getElementById('btn-their-point');
+      const labelOur = document.getElementById('our-team-label');
+      const labelTheir = document.getElementById('their-team-label');
+
+      if (myTeam === 'red') {
+        btnOur.className = 'btn-point bg-red';
+        btnTheir.className = 'btn-point bg-blue';
+        labelOur.innerText = "(Squadra Rossa)";
+        labelTheir.innerText = "(Squadra Blu)";
+      } else {
+        btnOur.className = 'btn-point bg-blue';
+        btnTheir.className = 'btn-point bg-red';
+        labelOur.innerText = "(Squadra Blu)";
+        labelTheir.innerText = "(Squadra Rossa)";
+      }
+    }
+
+    function startTimer(forcedStartTime = null) {
+      if (forcedStartTime) {
+        startTime = forcedStartTime;
+      } else if (!startTime) {
+        startTime = Date.now();
+        gameState.startTime = startTime;
+      }
+
+      if (timerInterval) clearInterval(timerInterval);
+
+      timerInterval = setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+        const secs = String(elapsedSeconds % 60).padStart(2, '0');
+        document.getElementById('match-timer').innerText = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function attachHoldListener(elementId, progressBarId, callback) {
+      const el = document.getElementById(elementId);
+      const bar = document.getElementById(progressBarId);
+      let timer = null;
+
+      function startHold(e) {
+        e.preventDefault();
+        bar.style.transition = 'width 3s linear';
+        bar.style.width = '100%';
+
+        timer = setTimeout(() => {
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          callback();
+          resetHold();
+        }, 3000);
+      }
+
+      function resetHold() {
+        clearTimeout(timer);
+        bar.style.transition = 'width 0.1s linear';
+        bar.style.width = '0%';
+      }
+
+      el.addEventListener('mousedown', startHold);
+      el.addEventListener('touchstart', startHold);
+      el.addEventListener('mouseup', resetHold);
+      el.addEventListener('mouseleave', resetHold);
+      el.addEventListener('touchend', resetHold);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      attachHoldListener('btn-undo', 'prog-undo', () => {
+        if (historyStack.length > 0) undoLastPoint();
+        else showToast("Nessun punto da annullare!", "info");
+      });
+
+      attachHoldListener('btn-home', 'prog-home', goHome);
+      attachHoldListener('btn-reset', 'prog-reset', resetMatch);
+    });
+
+    function applyMatchSettings() {
+      gameState.deuceMode = selectedDeuceMode;
+      gameState.maxAdv = selectedMaxAdv;
+      gameState.deuceLabel = selectedDeuceLabel;
+    }
+
+    function startLocalMatch() {
+      matchCode = document.getElementById('match-code').value.trim() || 'Locale';
+      applyMatchSettings();
+      openGameScreen();
+      showToast("Partita avviata in Locale", "info");
+    }
+
+    function initP2PMatch() {
+      matchCode = document.getElementById('match-code').value.trim();
+      applyMatchSettings();
+
+      if (!matchCode) {
+        showToast("Inserisci il Numero Partita!", "error");
+        return;
+      }
+
+      showToast("Connessione P2P...", "info");
+
+      const hostPeerId = `padel-psp25-${matchCode}-host`;
+      const myRandomId = `padel-psp25-${matchCode}-${Math.floor(Math.random()*10000)}`;
+
+      peer = new Peer(hostPeerId);
+
+      peer.on('open', (id) => {
+        showToast(`Host Partita n. ${matchCode}!`);
+        connectedPlayers[id] = { name: myRoleName, team: myTeam };
+        openGameScreen();
+      });
+
+      peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') connectAsClient(hostPeerId, myRandomId);
+        else showToast("Errore di rete P2P!", "error");
+      });
+
+      peer.on('connection', setupConnection);
+    }
+
+    function connectAsClient(hostPeerId, clientPeerId) {
+      peer = new Peer(clientPeerId);
+      peer.on('open', () => {
+        const conn = peer.connect(hostPeerId);
+        setupConnection(conn);
+      });
+    }
+
+    function setupConnection(conn) {
+      connections.push(conn);
+
+      conn.on('open', () => {
+        conn.send({ type: 'JOIN', name: myRoleName, team: myTeam });
+        openGameScreen();
+      });
+
+      conn.on('data', (data) => handleIncomingData(data, conn));
+
+      conn.on('close', () => {
+        connections = connections.filter(c => c !== conn);
+        updatePlayerCount();
+      });
+    }
+
+    function handleIncomingData(data, conn) {
+      if (data.type === 'JOIN') {
+        showToast(`🎾 ${data.name} in campo!`, 'success');
+        connectedPlayers[conn.peer] = { name: data.name, team: data.team };
+        updatePlayerCount();
+        conn.send({ type: 'SYNC_STATE', state: gameState, history: historyStack });
+      } 
+      else if (data.type === 'SYNC_STATE') {
+        gameState = data.state;
+        if (data.history) historyStack = data.history;
+        if (gameState.startTime) startTimer(gameState.startTime);
+        updateUI();
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      }
+    }
+
+    function openGameScreen() {
+      setupButtonColors();
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'block';
+      document.getElementById('display-match').innerText = matchCode;
+      document.getElementById('display-mode').innerText = gameState.deuceLabel || selectedDeuceLabel;
+      startTimer(gameState.startTime);
+      updateUI();
+    }
+
+    function goHome() {
+      if (timerInterval) clearInterval(timerInterval);
+      if (peer) peer.destroy();
+      connections = [];
+      connectedPlayers = {};
+      
+      document.getElementById('game-screen').style.display = 'none';
+      document.getElementById('setup-screen').style.display = 'block';
+      showToast("Tornato alla Home", "info");
+    }
+
+    function addPoint(type) {
+      historyStack.push(JSON.parse(JSON.stringify(gameState)));
+
+      let targetTeam = type === 'our' ? myTeam : (myTeam === 'red' ? 'blue' : 'red');
+
+      if (gameState.redPoints === 3 && gameState.bluePoints === 3) {
+        if (gameState.deuceMode === 'golden') {
+          winGame(targetTeam);
+        } else if (gameState.deuceMode === 'limited' && gameState.advCount >= gameState.maxAdv) {
+          winGame(targetTeam);
+        } else {
+          if (targetTeam === 'red') {
+            if (gameState.advantageState === 'RED_ADV') {
+              winGame('red');
+            } else if (gameState.advantageState === 'BLUE_ADV') {
+              gameState.advantageState = "";
+              gameState.advCount++;
+            } else {
+              gameState.advantageState = "RED_ADV";
+            }
+          } else {
+            if (gameState.advantageState === 'BLUE_ADV') {
+              winGame('blue');
+            } else if (gameState.advantageState === 'RED_ADV') {
+              gameState.advantageState = "";
+              gameState.advCount++;
+            } else {
+              gameState.advantageState = "BLUE_ADV";
+            }
+          }
+        }
+      } else {
+        if (targetTeam === 'red') {
+          if (gameState.redPoints === 3) winGame('red');
+          else gameState.redPoints++;
+        } else {
+          if (gameState.bluePoints === 3) winGame('blue');
+          else gameState.bluePoints++;
+        }
+      }
+
+      if (navigator.vibrate) navigator.vibrate(150);
+      broadcastState();
+    }
+
+    function winGame(team) {
+      if (team === 'red') gameState.redGames++;
+      else gameState.blueGames++;
+
+      gameState.redPoints = 0;
+      gameState.bluePoints = 0;
+      gameState.advantageState = "";
+      gameState.advCount = 0;
+    }
+
+    function undoLastPoint() {
+      if (historyStack.length === 0) return;
+      gameState = historyStack.pop();
+      showToast("Punto annullato!", "info");
+      broadcastState();
+    }
+
+    function resetMatch() {
+      historyStack = [];
+      startTime = Date.now();
+      gameState = { 
+        redPoints: 0, bluePoints: 0, redGames: 0, blueGames: 0, 
+        advantageState: "", advCount: 0, deuceMode: gameState.deuceMode, 
+        maxAdv: gameState.maxAdv, deuceLabel: gameState.deuceLabel, startTime: startTime 
+      };
+      startTimer(startTime);
+      broadcastState();
+      showToast("Partita azzerata!", "info");
+    }
+
+    function broadcastState() {
+      updateUI();
+      connections.forEach(conn => {
+        if (conn.open) conn.send({ type: 'SYNC_STATE', state: gameState, history: historyStack });
+      });
+    }
+
+    function updatePlayerCount() {
+      const count = Object.keys(connectedPlayers).length + 1;
+      document.getElementById('player-count').innerText = `${count}/4`;
+    }
+
+    function updateUI() {
+      const rawScores = [0, 15, 30, 40];
+      
+      let redDisplay = rawScores[gameState.redPoints] !== undefined ? rawScores[gameState.redPoints] : '40';
+      let blueDisplay = rawScores[gameState.bluePoints] !== undefined ? rawScores[gameState.bluePoints] : '40';
+
+      if (gameState.redPoints === 3 && gameState.bluePoints === 3) {
+        if (gameState.advantageState === "RED_ADV") {
+          redDisplay = "AD";
+          blueDisplay = "40";
+        } else if (gameState.advantageState === "BLUE_ADV") {
+          redDisplay = "40";
+          blueDisplay = "AD";
+        } else {
+          redDisplay = "40";
+          blueDisplay = "40";
+        }
+      }
+
+      document.getElementById('display-mode').innerText = gameState.deuceLabel || selectedDeuceLabel;
+      document.getElementById('red-points').innerText = redDisplay;
+      document.getElementById('blue-points').innerText = blueDisplay;
+      document.getElementById('red-games').innerText = gameState.redGames;
+      document.getElementById('blue-games').innerText = gameState.blueGames;
+    }
+  </script>
+</body>
+</html>
